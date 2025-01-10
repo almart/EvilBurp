@@ -1,4 +1,7 @@
-# EvilBurp A Evilginx Phishlet Generator
+# ![extension-icon](https://github.com/user-attachments/assets/a449b69b-66e6-4cde-811a-fa15e9551e19) EvilBurp A Evilginx Phishlet Generator 
+
+
+
 
 A Burp Suite extension for automatically generating Evilginx phishlets for security testing and research.
 
