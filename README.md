@@ -63,5 +63,3 @@ This tool is for authorized security testing and research only. Always obtain pr
 ## Contributing
 Pull requests are welcome. Please ensure updates maintain core functionality.
 
-## License
-MIT License
