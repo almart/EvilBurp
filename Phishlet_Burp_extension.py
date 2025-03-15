@@ -62,7 +62,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, IHttpListener):
                 "is_landing": True
             }],
             "auth_tokens": [{
-                "domain": f".{self.last_domain}",
+                "domain": "." + self.last_domain,
                 "keys": self.auth_tokens if self.auth_tokens else ["session", "token"]
             }],
             "credentials": {
